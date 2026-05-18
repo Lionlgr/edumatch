@@ -18,10 +18,7 @@ export default function App() {
         </Routes>
       </main>
       <footer className="mx-auto max-w-6xl px-6 py-8 text-center text-xs text-slate-400">
-        EduMatch · Projet Master MIAGE GR2 ·{' '}
-        <a href="https://github.com" className="hover:text-brand-700 underline underline-offset-2">
-          GitHub
-        </a>
+        EduMatch · Projet Master MIAGE GR2
       </footer>
     </div>
   )

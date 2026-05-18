@@ -47,8 +47,8 @@ export default function Home() {
             </span>
           </h1>
           <p className="mt-4 text-lg text-slate-600">
-            Marketplace de tutorat universitaire. Recherche par matière, classement par
-            similarité cosinus, mTLS de bout-en-bout sur Kubernetes.
+            Marketplace de tutorat universitaire. Trouve un tuteur par matière,
+            réserve un créneau en quelques clics.
           </p>
         </div>
       </section>
