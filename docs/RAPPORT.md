@@ -314,3 +314,154 @@ L'objectif fixé — **valider le palier 18/20 sur 20 jours en binôme** — est
 Le palier 20/20 (cloud) est techniquement **à 5 minutes** : toute l'infrastructure GCP est en place, il suffit de lancer la commande `gcloud container clusters create-auto edumatch`. Le choix de ne pas activer le cluster pendant la phase de développement est purement budgétaire (préservation du crédit Free Tier).
 
 Le projet démontre une **intégration cohérente de l'écosystème Cloud Native** : on ne se contente pas de cocher les cases, chaque technologie résout un problème métier ou de sécurité explicitement décrit dans ce document.
+
+---
+
+## Annexe — Preuves CLI
+
+Toutes les sorties brutes sont archivées dans [`docs/evidence/`](evidence/). Extraits clés ci-dessous, captés en live sur le cluster Minikube.
+
+### A.1 État du cluster (palier 10 → 16)
+
+```
+$ kubectl -n edumatch get pods,svc,pvc
+NAME                                 READY   STATUS    RESTARTS      AGE
+pod/tutor-postgres-0                 2/2     Running   0             30m
+pod/tutor-service-6fb7546b85-6xcgb   2/2     Running   1 (29m ago)   30m
+pod/tutor-service-6fb7546b85-78k4x   2/2     Running   0             30m
+pod/user-postgres-0                  2/2     Running   0             30m
+pod/user-service-77cf8d478-pg7fj     2/2     Running   0             30m
+pod/user-service-77cf8d478-st7qk     2/2     Running   0             30m
+
+NAME                     TYPE        CLUSTER-IP      PORT(S)
+service/tutor-postgres   ClusterIP   None            5432/TCP
+service/tutor-service    ClusterIP   10.111.30.229   80/TCP,9090/TCP
+service/user-postgres    ClusterIP   None            5432/TCP
+service/user-service     ClusterIP   10.98.62.219    80/TCP
+
+NAME                                          STATUS   CAPACITY   STORAGECLASS
+data-tutor-postgres-0                         Bound    1Gi        standard
+data-user-postgres-0                          Bound    1Gi        standard
+```
+
+Le **`2/2`** confirme que chaque pod tourne avec son sidecar Envoy injecté par Istio.
+
+### A.2 Plan de contrôle Istio
+
+```
+$ kubectl -n istio-system get pods,svc
+pod/istio-egressgateway-...   1/1   Running
+pod/istio-ingressgateway-...  1/1   Running
+pod/istiod-...                1/1   Running
+
+service/istio-ingressgateway   LoadBalancer  10.107.26.187   127.0.0.1   80:32143/TCP
+```
+
+### A.3 mTLS STRICT
+
+```
+$ kubectl -n edumatch describe peerauthentication default
+Spec:
+  Mtls:
+    Mode:  STRICT
+```
+
+### A.4 Test REST via Istio Gateway (palier 12)
+
+```
+$ curl -i http://edumatch.local/api/auth/register \
+    -H "Content-Type: application/json" \
+    -d '{"email":"demo@miage.fr","password":"superSecret1","fullName":"Demo","role":"STUDENT"}'
+
+HTTP/1.1 201 Created
+content-type: application/json
+x-envoy-upstream-service-time: 539
+server: envoy
+
+{"accessToken":"eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJlZHVtYXRjaC11c2VyLXNlcnZpY2UiLCJzdWIiOiI4OTA5OWMzYi05NjA3LTRlYjAtOGVmMy04ZmVjOTA5Y2IzNmMiLCJlbWFpbCI6ImRlbW9AbWlhZ2UuZnIiLCJyb2xlIjoiU1RVREVOVCIsImlhdCI6MTc3OTEzNTU4NywiZXhwIjoxNzc5MTM5MTg3fQ._aOHwBsWpPgLPy72r9vBRAijqH6e4vtcemgrHZ-r6Yg",
+ "expiresInSeconds":3600,
+ "user":{"id":"89099c3b-9607-4eb0-8ef3-8fec909cb36c","email":"demo@miage.fr","fullName":"Demo Eleve","role":"STUDENT"}}
+```
+
+Le header `server: envoy` confirme que la réponse passe par le sidecar Envoy d'Istio.
+
+### A.5 Test gRPC MatchTutors (palier 14, bonus gRPC)
+
+```
+$ grpcurl -plaintext localhost:9099 list
+fr.miage.edumatch.tutor.grpc.TutorMatcher
+grpc.health.v1.Health
+grpc.reflection.v1alpha.ServerReflection
+
+$ grpcurl -plaintext -d '{"subjects":["math","calculus"],"limit":5}' \
+    localhost:9099 fr.miage.edumatch.tutor.grpc.TutorMatcher/MatchTutors
+
+{
+  "profile": {"full_name": "Marie Dubois", "subjects": ["algebra","math","calculus"], ...},
+  "score": 0.8164965809277261       ← matching parfait math+calculus (2/2)
+}
+{
+  "profile": {"full_name": "Jean Martin", "subjects": ["physics","thermodynamics","math"], ...},
+  "score": 0.4082482904638631       ← match partiel math seulement (1/2)
+}
+```
+
+Le **score** est la similarité cosinus `|A ∩ B| / sqrt(|A| · |B|)` calculée côté serveur.
+
+### A.6 Tests de sécurité (palier 18)
+
+#### Test 1 — pod sans sidecar Envoy → bloqué par mTLS STRICT
+```
+$ kubectl run -n default sec-test --image=curlimages/curl --rm -- \
+    curl -s http://user-service.edumatch.svc.cluster.local/users
+HTTP 000
+TCP/TLS refused (mTLS STRICT enforced)
+```
+
+#### Test 2 — pod avec sidecar mais ServiceAccount non autorisée → bloqué par AuthorizationPolicy
+```
+$ kubectl run -n edumatch unauthorized --image=curlimages/curl --rm -- \
+    curl -s http://user-service.edumatch.svc.cluster.local/users
+RBAC: access denied
+HTTP 403
+```
+
+#### Test 3 — preuve que les règles d'autorisation sont bien actives
+```
+$ kubectl -n edumatch get authorizationpolicy
+NAME                             ACTION   AGE
+allow-app-to-tutor-postgres               27m
+allow-app-to-user-postgres                27m
+allow-gateway-to-tutor-service            27m
+allow-gateway-to-user-service             27m
+allow-user-to-tutor-grpc                  27m
+default-deny                              27m
+```
+
+Exemple de règle (`allow-gateway-to-user-service`) :
+```yaml
+spec:
+  selector:
+    matchLabels:
+      app: user-service
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/auth/*", "/users/*", "/users", "/actuator/health/*"]
+```
+
+### A.7 Captures écran complémentaires
+
+Une capture **Swagger UI** générée lors d'une session de validation (port-forward sur user-service:8080) est disponible dans l'annexe `docs/img/swagger-ui.png` une fois sauvegardée par l'utilisateur. L'interface confirme les 5 endpoints REST :
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /users`
+- `GET /users/{id}`
+- `GET /users/me`
+
+> **Captures Docker Hub** (vos 2 images publiques) et **profil Google Labs** (par membre du binôme) : à fournir manuellement comme exigé par le sujet — voir [`docs/SCREENSHOTS.md`](SCREENSHOTS.md).

@@ -1,0 +1,12 @@
+===== 08: Tests sécurité (mTLS + AuthorizationPolicy) =====
+--- a) Pod SANS sidecar (ns default) -> user-service : connection refused attendue ---
+
+HTTP 000
+TCP/TLS refused (mTLS STRICT enforced)
+
+--- b) Pod AVEC sidecar mais ServiceAccount 'default' -> 403 RBAC attendu ---
+RBAC: access denied
+HTTP 403
+
+--- c) Vérif identité TLS via istioctl proxy-config ---
+(Voir aussi 03-peerauth.txt pour le mode STRICT)

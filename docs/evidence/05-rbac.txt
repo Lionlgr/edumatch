@@ -1,0 +1,51 @@
+===== 05: RBAC K8s (Roles + RoleBindings) =====
+NAME                                                         CREATED AT
+role.rbac.authorization.k8s.io/tutor-service-config-reader   2026-05-18T19:51:25Z
+role.rbac.authorization.k8s.io/user-service-config-reader    2026-05-18T19:51:25Z
+
+NAME                                                                ROLE                               AGE   USERS   GROUPS   SERVICEACCOUNTS
+rolebinding.rbac.authorization.k8s.io/tutor-service-config-reader   Role/tutor-service-config-reader   27m                    edumatch/tutor-service
+rolebinding.rbac.authorization.k8s.io/user-service-config-reader    Role/user-service-config-reader    27m                    edumatch/user-service
+
+Name:         tutor-service-config-reader
+Labels:       <none>
+Annotations:  <none>
+PolicyRule:
+  Resources   Non-Resource URLs  Resource Names          Verbs
+  ---------   -----------------  --------------          -----
+  configmaps  []                 [tutor-service-config]  [get watch]
+  secrets     []                 [tutor-service-secret]  [get watch]
+
+
+Name:         user-service-config-reader
+Labels:       <none>
+Annotations:  <none>
+PolicyRule:
+  Resources   Non-Resource URLs  Resource Names         Verbs
+  ---------   -----------------  --------------         -----
+  configmaps  []                 [user-service-config]  [get watch]
+  secrets     []                 [user-service-secret]  [get watch]
+
+
+Name:         tutor-service-config-reader
+Labels:       <none>
+Annotations:  <none>
+Role:
+  Kind:  Role
+  Name:  tutor-service-config-reader
+Subjects:
+  Kind            Name           Namespace
+  ----            ----           ---------
+  ServiceAccount  tutor-service  edumatch
+
+
+Name:         user-service-config-reader
+Labels:       <none>
+Annotations:  <none>
+Role:
+  Kind:  Role
+  Name:  user-service-config-reader
+Subjects:
+  Kind            Name          Namespace
+  ----            ----          ---------
+  ServiceAccount  user-service  edumatch

@@ -1,0 +1,16 @@
+===== 03: PeerAuthentication (mTLS STRICT) =====
+Name:         default
+Namespace:    edumatch
+Labels:       <none>
+Annotations:  <none>
+API Version:  security.istio.io/v1
+Kind:         PeerAuthentication
+Metadata:
+  Creation Timestamp:  2026-05-18T19:51:25Z
+  Generation:          1
+  Resource Version:    1092
+  UID:                 4d4f3d01-33a4-4d79-9c2b-cf17164da8e7
+Spec:
+  Mtls:
+    Mode:  STRICT
+Events:    <none>

@@ -1,0 +1,8 @@
+===== 10: Images Docker Hub =====
+edumatch-user-service:0.1.0                                                                           d7bd5fa5edd9        416MB          135MB        
+lionlgr/edumatch-tutor-service:0.1.0                                                                  b860b7214c03        445MB          149MB        
+lionlgr/edumatch-user-service:0.1.0                                                                   d7bd5fa5edd9        416MB          135MB        
+
+Publiées sur :
+  https://hub.docker.com/r/lionlgr/edumatch-user-service
+  https://hub.docker.com/r/lionlgr/edumatch-tutor-service
