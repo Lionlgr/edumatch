@@ -1,99 +1,67 @@
-# Prochaines étapes — Palier 10 → 20/20
+# Roadmap technique
 
-État actuel : **palier 10/20 atteint** (1 service codé + Dockerfile + manifestes K8s prêts).
-Reste à exécuter : build Docker, push Docker Hub, déploiement Minikube, puis paliers 12 → 20.
+État actuel : projet déployé en local sur Minikube avec Istio (mTLS + AuthorizationPolicy + RBAC). Front React opérationnel. Tout le code et les manifestes sont versionnés.
 
-## 1. Build & push de l'image Docker (palier 10/20 — finalisation)
+## Prochaines évolutions possibles
 
-```bash
-# Lancer Docker Desktop d'abord (icône baleine)
-docker info  # doit répondre sans erreur
+### Déploiement cloud (GKE Autopilot)
 
-cd services/user-service
-
-# Build l'image
-docker build -t edumatch-user-service:0.1.0 .
-
-# Test rapide (utilise H2 par défaut via profil dev — override SPRING_PROFILES_ACTIVE pour la démo)
-docker run --rm -p 8080:8080 -e SPRING_PROFILES_ACTIVE=dev edumatch-user-service:0.1.0
-# Dans un autre terminal :
-curl http://localhost:8080/actuator/health
-
-# Login Docker Hub (créer un compte si nécessaire — https://hub.docker.com)
-docker login
-
-# Tag + push (remplacer YOUR_DOCKERHUB_USER)
-docker tag edumatch-user-service:0.1.0 YOUR_DOCKERHUB_USER/edumatch-user-service:0.1.0
-docker push YOUR_DOCKERHUB_USER/edumatch-user-service:0.1.0
-
-# Mettre à jour k8s/base/user-service/deployment.yaml :
-#   image: docker.io/YOUR_DOCKERHUB_USER/edumatch-user-service:0.1.0
-```
-
-## 2. Déploiement Minikube (palier 10/20 confirmé)
+Toute l'infra GCP est en place (projet `edumatch-miage-2026`, billing activé, APIs `container` et `compute` activées). Pour lancer le cluster :
 
 ```bash
-# Démarrer Minikube avec Ingress activé
-minikube start --cpus=4 --memory=4096 --driver=docker
-minikube addons enable ingress
+gcloud container clusters create-auto edumatch \
+  --project=edumatch-miage-2026 \
+  --region=europe-west1 \
+  --release-channel=regular
 
-# Déployer
+gcloud container clusters get-credentials edumatch --region=europe-west1
+istioctl install --set profile=demo -y
 kubectl apply -k k8s/base/user-service
-
-# Vérifier
-kubectl -n edumatch get pods,svc,ingress
-kubectl -n edumatch logs deploy/user-service --tail=50
-
-# Tester via port-forward (rapide)
-kubectl -n edumatch port-forward svc/user-service 8080:80
-curl http://localhost:8080/actuator/health
+kubectl apply -k k8s/base/tutor-service
+kubectl apply -k k8s/base/istio
 ```
 
-## 3. Gateway locale (palier 12/20)
+Pensez à supprimer le cluster après usage pour préserver le crédit Free Tier :
 
 ```bash
-# Ajouter une entrée /etc/hosts pour edumatch.local
-echo "$(minikube ip) edumatch.local" | sudo tee -a /etc/hosts
-
-# Vérifier l'Ingress
-curl http://edumatch.local/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@miage.fr","password":"superSecret1"}'
+gcloud container clusters delete edumatch --region=europe-west1
 ```
 
-## 4. À coder ensuite
+### CI/CD GitHub Actions
 
-### Palier 14/20 — `tutor-service` (Java + gRPC) et `booking-service` (Node.js)
-- Proto partagé dans `/proto/edumatch.proto` (User, Tutor, Booking)
-- `tutor-service` expose un endpoint gRPC `MatchTutors(Query)` + REST `/tutors`
-- `booking-service` Node.js Express : `POST /bookings`, `GET /bookings/{userId}`
-- Communication inter-services authentifiée via JWT (chaque service valide la même clé HMAC)
+Workflow `build → test → push Docker Hub → kubectl apply` à chaque push sur `main`. Permet de démontrer la maturité DevOps.
 
-### Palier 16/20 — Persistance K8s
-- StatefulSet PostgreSQL par service (déjà câblé pour user-service)
-- Migrations Flyway/Liquibase à ajouter (au lieu de `ddl-auto: update`)
+### `booking-service` (3e microservice)
 
-### Palier 18/20 — Istio + mTLS + RBAC
-- Installer Istio : `istioctl install --set profile=demo -y`
-- Remplacer `ingress.yaml` par Istio `Gateway` + `VirtualService`
-- Activer `PeerAuthentication` STRICT au niveau du namespace
-- Créer des `AuthorizationPolicy` (par exemple : seul `booking-service` peut appeler `tutor-service`)
-- RBAC K8s : `Role` + `RoleBinding` limitant la SA de chaque service à ses propres ConfigMaps/Secrets
+Service Node.js consommateur du gRPC `TutorMatcher.MatchTutors` pour démontrer une chaîne d'appels inter-services authentifiée en mTLS Istio.
 
-### Palier 20/20 — Déploiement GKE Autopilot
-- `gcloud auth login` + créer un projet GCP (utiliser les 300 $ gratuits)
-- `gcloud container clusters create-auto edumatch --region=europe-west1`
-- Installer Istio sur GKE (ou utiliser Anthos Service Mesh)
-- Configurer Cloud DNS + cert-manager pour HTTPS
-- CI/CD GitHub Actions : build → push GCR → `kubectl apply`
+### Persistance avancée
 
-## 5. Captures Google Labs (pour le rapport)
+- Migrations Flyway ou Liquibase au lieu de `ddl-auto: update`
+- Backups automatiques des PostgreSQL via `CronJob`
 
-À faire pendant le projet :
-- [https://www.cloudskillsboost.google/](https://www.cloudskillsboost.google/) → suivre 5 labs :
-  1. **Kubernetes in Google Cloud: Challenge Lab**
-  2. **Deploy a Microservices Application with Anthos Service Mesh**
-  3. **Securing a GKE cluster with Network Policies**
-  4. **Cloud IAM: Qwik Start**
-  5. **GKE Workload Identity**
-- Chaque lab donne un badge + une activité visible sur le profil → captures à inclure dans le rapport.
+### Observabilité
+
+- Prometheus + Grafana (l'actuator est déjà exposé sur `/actuator/prometheus`)
+- Kiali pour visualiser la topologie Istio en temps réel
+- Jaeger pour le tracing distribué
+
+### Mode opératoire détaillé (build → push → déploiement)
+
+```bash
+# 1. Build local
+cd services/user-service
+docker build -t lionlgr/edumatch-user-service:0.2.0 .
+
+# 2. Push Docker Hub
+docker login
+docker push lionlgr/edumatch-user-service:0.2.0
+
+# 3. Bump le tag dans k8s/base/user-service/deployment.yaml puis :
+kubectl apply -k k8s/base/user-service
+kubectl -n edumatch rollout status deployment/user-service
+```
+
+### Configuration des Google Labs (rendu)
+
+Voir [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) pour la liste des labs recommandés et la procédure de capture.

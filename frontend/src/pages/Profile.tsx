@@ -67,7 +67,7 @@ export default function Profile() {
       </div>
 
       <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-2">🔐 Sécurité — palier 18/20</h3>
+        <h3 className="text-sm font-semibold text-slate-800 mb-2">🔐 Sécurité</h3>
         <p className="text-xs text-slate-600 leading-relaxed">
           Ces données ont été récupérées via <code className="bg-white px-1.5 py-0.5 rounded font-mono text-[11px]">GET /api/users/me</code>{' '}
           avec un token JWT signé HS256. La requête transite par Istio Gateway puis le sidecar Envoy

@@ -13,16 +13,18 @@ Projet académique **Master MIAGE GR2** — démonstration d'une architecture Cl
 
 ---
 
-## Paliers du barème
+## Fonctionnalités livrées
 
-| Palier | Note | Statut |
-|---|---|---|
-| 1 service local + Docker + K8s | 10/20 | ✅ |
-| Gateway locale | 12/20 | ✅ |
-| 2e service + **bonus gRPC** | 14/20 | ✅ |
-| Base de données dans le cluster | 16/20 | ✅ |
-| Sécurité (Istio mTLS + RBAC) | **18/20** | ✅ |
-| Déploiement cloud (GKE) | 20/20 | 🟡 préparé (gcloud + projet GCP), cluster non lancé |
+| Module | État |
+|---|---|
+| Microservices Java/Spring Boot conteneurisés | ✅ |
+| Déploiement Kubernetes (Minikube + GKE-ready) | ✅ |
+| Gateway de bord (Istio) avec réécriture de chemins | ✅ |
+| Communication gRPC bidirectionnelle entre services | ✅ |
+| PostgreSQL en StatefulSet (1 base par service) | ✅ |
+| Sécurité mTLS STRICT + AuthorizationPolicy + RBAC K8s | ✅ |
+| Front-end React + Tailwind avec auth JWT | ✅ |
+| Déploiement cloud GKE Autopilot | 🟡 préparé (gcloud + projet GCP), cluster non lancé |
 
 ---
 
@@ -142,7 +144,7 @@ kubectl run -n default no-sidecar --rm -i --restart=Never \
 
 ---
 
-## Déploiement cloud (palier 20/20)
+## Déploiement cloud (GKE Autopilot)
 
 Le projet GCP `edumatch-miage-2026` est prêt. Pour activer le déploiement :
 

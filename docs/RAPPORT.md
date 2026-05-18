@@ -67,7 +67,7 @@ Le projet est un **prétexte fonctionnel** pour démontrer une architecture Clou
 - **Java/Spring Boot** sur les 2 services : alignement avec les exemples du référentiel pédagogique (`charroux/kubernetes-minikube`, `charroux/gRPCSpring`, `charroux/rentalservice`).
 - **gRPC pour `tutor-service`** : justifié par le matching où le serveur peut streamer plusieurs résultats classés (server-streaming RPC). Le bonus du barème est ainsi techniquement motivé, pas plaqué.
 - **PostgreSQL en StatefulSet** plutôt qu'externe (RDS, Cloud SQL) : démontre la maîtrise des `volumeClaimTemplates`, `headless Service`, `pg_isready` probes — autant de patterns K8s purs.
-- **Istio plutôt qu'Ingress NGINX** : Istio Gateway suffit déjà à valider le palier 12/20, mais il débloque ensuite **gratuitement** mTLS + AuthorizationPolicy (palier 18/20). Le surcoût d'apprentissage est largement remboursé.
+- **Istio plutôt qu'Ingress NGINX** : Istio Gateway sert d'entrée HTTP et débloque ensuite **gratuitement** mTLS + AuthorizationPolicy. Le surcoût d'apprentissage est largement remboursé.
 
 ---
 
@@ -90,39 +90,33 @@ Le projet est un **prétexte fonctionnel** pour démontrer une architecture Clou
 
 ---
 
-## 4. Paliers du barème — preuves d'avancement
+## 4. Modules livrés
 
-### Palier 10/20 — service local + Docker + K8s
+### 4.1 `user-service` — authentification et profils
 
-- `user-service` Spring Boot avec endpoints REST `/auth/register`, `/auth/login`, `/users/me`, `/users/{id}`, `/users`.
+- Spring Boot avec endpoints REST `/auth/register`, `/auth/login`, `/users/me`, `/users/{id}`, `/users`.
 - JWT HS256 signé par une clé partagée entre services.
 - Mot de passe haché en BCrypt avant insertion en base.
 - `Dockerfile` multi-stage (build sur JDK, runtime sur JRE alpine, utilisateur non-root, healthcheck).
 - Image publiée : [docker.io/lionlgr/edumatch-user-service:0.1.0](https://hub.docker.com/r/lionlgr/edumatch-user-service).
 - Déploiement K8s : Namespace, ServiceAccount, ConfigMap, Secret, Deployment 2 réplicas, Service ClusterIP.
 
-> **Capture à inclure** : `kubectl -n edumatch get pods,svc` montrant `user-service` et `user-postgres` en `Running`.
+### 4.2 Gateway — Istio + VirtualService
 
-### Palier 12/20 — Gateway locale
-
-- D'abord Ingress NGINX (palier intermédiaire), puis remplacé par **Istio Gateway + VirtualService** quand on a installé Istio pour le palier 18.
-- Routage `/api/auth/*`, `/api/users/*`, `/api/tutors/*` avec réécriture du préfixe `/api`.
+- Istio Gateway + VirtualService au lieu d'un Ingress NGINX, ce qui permet de réutiliser l'ingress controller pour le mTLS sortant vers les services.
+- Routage `/api/auth/*`, `/api/users/*`, `/api/tutors/*` avec réécriture regex du préfixe `/api`.
 - Test : `curl http://edumatch.local/api/auth/register` → `201 Created` + JWT.
 
-> **Capture à inclure** : sortie complète du `curl -i` retournant `HTTP/1.1 201` et le JSON `accessToken`.
+### 4.3 `tutor-service` — REST + gRPC
 
-### Palier 14/20 — 2e service + bonus gRPC
-
-- `tutor-service` Spring Boot avec :
+- Spring Boot avec :
   - REST : `GET /tutors`, `GET /tutors/{id}`, `GET /tutors?subject=X`, `POST /tutors` (rôle TUTOR requis).
   - **gRPC** sur port 9090 : `TutorMatcher.MatchTutors(MatchRequest) returns (stream TutorMatch)`.
 - Fichier `tutor.proto` partagé, code Java généré automatiquement par `protobuf-maven-plugin`.
 - Algorithme : similarité cosinus binaire sur les ensembles de sujets — `|A ∩ B| / sqrt(|A| · |B|)`.
 - Image : [docker.io/lionlgr/edumatch-tutor-service:0.1.0](https://hub.docker.com/r/lionlgr/edumatch-tutor-service).
 
-> **Capture à inclure** : appel `grpcurl` retournant les tuteurs classés (Marie Dubois score 0.816, Jean Martin score 0.408).
-
-### Palier 16/20 — base de données dans le cluster
+### 4.4 Persistance — PostgreSQL en StatefulSet
 
 - 2 `StatefulSet` PostgreSQL séparés (`user-postgres`, `tutor-postgres`) avec :
   - `volumeClaimTemplates` (PVC dynamique 1 Gi par instance)
@@ -130,9 +124,7 @@ Le projet est un **prétexte fonctionnel** pour démontrer une architecture Clou
   - probes `pg_isready` (readiness + liveness)
 - Identifiants stockés en `Secret`, montés en variables d'env via `envFrom`.
 
-> **Capture à inclure** : `kubectl -n edumatch get pvc` montrant les volumes liés.
-
-### Palier 18/20 — sécurité (mTLS + RBAC)
+### 4.5 Sécurité — mTLS, AuthorizationPolicy, RBAC
 
 - **Istio installé** avec le profil `demo`, namespace `edumatch` labellisé `istio-injection=enabled` → chaque pod reçoit un sidecar Envoy.
 - **`PeerAuthentication: STRICT`** au niveau du namespace → toute communication non chiffrée est rejetée.
@@ -152,14 +144,20 @@ Le projet est un **prétexte fonctionnel** pour démontrer une architecture Clou
 | Pod sans sidecar → user-service | refus de connexion (mTLS bloque) | ✅ HTTP 000 |
 | Pod ServiceAccount `default` → user-service | rejeté par AuthorizationPolicy | ✅ 403 "RBAC: access denied" |
 
-> **Captures à inclure** : les 3 tests ci-dessus.
+### 4.6 Front-end React
 
-### Palier 20/20 — déploiement cloud (préparé, non activé)
+- Application React 18 + TypeScript + Vite + Tailwind CSS.
+- Pages : recherche de tuteurs (avec filtre par matière), inscription, connexion, profil utilisateur.
+- Authentification JWT stockée en `localStorage`, header `Authorization: Bearer ...` ajouté automatiquement.
+- Design avec font Inter, palette violette personnalisée, avatars en gradient, puces matière colorées par domaine.
+- Dev server avec proxy Vite vers les port-forwards K8s pour itération rapide.
 
-- gcloud CLI authentifié sur `gableulmi@gmail.com`
-- Projet GCP `edumatch-miage-2026` créé, billing activé via crédit Free Tier (300 €)
-- APIs `container.googleapis.com` et `compute.googleapis.com` activées
-- Commande pour activer le palier 20/20 :
+### 4.7 Déploiement cloud (préparé, non activé)
+
+- gcloud CLI authentifié.
+- Projet GCP `edumatch-miage-2026` créé, billing activé via crédit Free Tier (300 €).
+- APIs `container.googleapis.com` et `compute.googleapis.com` activées.
+- Commande d'activation :
   ```bash
   gcloud container clusters create-auto edumatch \
     --project=edumatch-miage-2026 \
@@ -171,7 +169,7 @@ Le projet est un **prétexte fonctionnel** pour démontrer une architecture Clou
   kubectl apply -k k8s/base/tutor-service
   kubectl apply -k k8s/base/istio
   ```
-- Coût estimé : ~0.15 €/h ; ressources nécessaires couvertes par le crédit Free Tier.
+- Coût estimé : ~0.15 €/h ; couvert par le crédit Free Tier.
 
 > **Le cluster n'a pas été lancé pour préserver le crédit pendant la phase de développement.** Il peut être activé en 5-7 minutes le jour de la démonstration.
 
@@ -216,9 +214,11 @@ Le code est volontairement **idiomatique** des bonnes pratiques Spring Boot 3 :
 
 ### 5.4 Présentation (front office)
 
-Le front-end React est listé comme **option** dans le sujet — non livré dans cette version pour respecter l'échéance. La présentation passe par :
-- Swagger UI exposé sur `/swagger-ui.html` (sur `user-service`)
-- Sortie JSON formatée + tests CLI documentés dans le README
+Application React 18 + TypeScript + Tailwind CSS livrée dans `frontend/` :
+- **Recherche de tuteurs** : grille responsive de cartes, filtre par matière (avec round-trip backend `?subject=`), recherche client libre sur nom et bio.
+- **Inscription / connexion** : formulaires avec validation, choix visuel Étudiant / Tuteur, JWT stocké en `localStorage`.
+- **Profil utilisateur** : affichage de l'UUID, du timestamp d'inscription, badge de rôle, et explication pédagogique de la chaîne de sécurité.
+- Swagger UI également disponible sur `user-service:8080/swagger-ui.html` pour les tests d'API.
 
 ---
 
@@ -298,20 +298,15 @@ edumatch/
 └── README.md               quick-start
 ```
 
-5 commits sur la branche `main`, un par palier :
-1. `feat: bootstrap user-service (palier 10/20)`
-2. `chore: point Deployment to lionlgr/edumatch-user-service:0.1.0 on Docker Hub`
-3. `fix(ingress): strip /api prefix via rewrite-target`
-4. `feat: add tutor-service with gRPC + REST (palier 14/20)`
-5. `feat(istio): mTLS STRICT + AuthorizationPolicy + RBAC (palier 18/20)`
+L'historique git est organisé en commits successifs, chacun correspondant à l'ajout d'un module : bootstrap du `user-service`, publication de l'image Docker Hub, correction du rewrite Ingress, ajout du `tutor-service` (REST + gRPC), bascule vers Istio (mTLS + AuthorizationPolicy + RBAC), documentation et capture des preuves CLI, puis ajout du front-end React.
 
 ---
 
 ## 10. Conclusion
 
-L'objectif fixé — **valider le palier 18/20 sur 20 jours en binôme** — est atteint.
+L'objectif fixé — **livrer une plateforme microservices complète sécurisée par mTLS sur 20 jours en binôme** — est atteint. La chaîne fonctionnelle a été validée bout-en-bout depuis l'UI React jusqu'à la base PostgreSQL en passant par l'Istio Gateway et les sidecars Envoy.
 
-Le palier 20/20 (cloud) est techniquement **à 5 minutes** : toute l'infrastructure GCP est en place, il suffit de lancer la commande `gcloud container clusters create-auto edumatch`. Le choix de ne pas activer le cluster pendant la phase de développement est purement budgétaire (préservation du crédit Free Tier).
+Le déploiement cloud (GKE Autopilot) est techniquement **à 5 minutes** : toute l'infrastructure GCP est en place, il suffit de lancer la commande `gcloud container clusters create-auto edumatch`. Le choix de ne pas activer le cluster pendant la phase de développement est purement budgétaire (préservation du crédit Free Tier).
 
 Le projet démontre une **intégration cohérente de l'écosystème Cloud Native** : on ne se contente pas de cocher les cases, chaque technologie résout un problème métier ou de sécurité explicitement décrit dans ce document.
 
@@ -321,7 +316,7 @@ Le projet démontre une **intégration cohérente de l'écosystème Cloud Native
 
 Toutes les sorties brutes sont archivées dans [`docs/evidence/`](evidence/). Extraits clés ci-dessous, captés en live sur le cluster Minikube.
 
-### A.1 État du cluster (palier 10 → 16)
+### A.1 État du cluster
 
 ```
 $ kubectl -n edumatch get pods,svc,pvc
@@ -366,7 +361,7 @@ Spec:
     Mode:  STRICT
 ```
 
-### A.4 Test REST via Istio Gateway (palier 12)
+### A.4 Test REST via Istio Gateway
 
 ```
 $ curl -i http://edumatch.local/api/auth/register \
@@ -385,7 +380,7 @@ server: envoy
 
 Le header `server: envoy` confirme que la réponse passe par le sidecar Envoy d'Istio.
 
-### A.5 Test gRPC MatchTutors (palier 14, bonus gRPC)
+### A.5 Test gRPC MatchTutors
 
 ```
 $ grpcurl -plaintext localhost:9099 list
@@ -408,7 +403,7 @@ $ grpcurl -plaintext -d '{"subjects":["math","calculus"],"limit":5}' \
 
 Le **score** est la similarité cosinus `|A ∩ B| / sqrt(|A| · |B|)` calculée côté serveur.
 
-### A.6 Tests de sécurité (palier 18)
+### A.6 Tests de sécurité (mTLS + RBAC)
 
 #### Test 1 — pod sans sidecar Envoy → bloqué par mTLS STRICT
 ```
