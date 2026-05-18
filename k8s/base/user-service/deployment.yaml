@@ -20,7 +20,7 @@ spec:
       serviceAccountName: user-service
       containers:
         - name: user-service
-          image: docker.io/CHANGEME/edumatch-user-service:0.1.0
+          image: docker.io/lionlgr/edumatch-user-service:0.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
