@@ -1,0 +1,11 @@
+# mTLS STRICT for the entire edumatch namespace.
+# Any plaintext (non-mTLS) traffic between pods is rejected by Envoy sidecars.
+# Traffic from the Istio ingressgateway uses mTLS by default.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: edumatch
+spec:
+  mtls:
+    mode: STRICT

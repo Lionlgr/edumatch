@@ -1,0 +1,17 @@
+# Istio Gateway: north-south traffic terminator (replaces Ingress NGINX).
+# Listens on port 80, host edumatch.local, forwards to VirtualService.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: edumatch-gateway
+  namespace: edumatch
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - edumatch.local

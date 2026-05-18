@@ -1,0 +1,101 @@
+# Default-deny baseline: nothing is allowed unless explicitly permitted below.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: default-deny
+  namespace: edumatch
+spec:
+  {}
+---
+# Allow the Istio ingressgateway (north-south) to reach user-service.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-gateway-to-user-service
+  namespace: edumatch
+spec:
+  selector:
+    matchLabels:
+      app: user-service
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/auth/*", "/users/*", "/users", "/actuator/health/*", "/actuator/info"]
+---
+# Allow the ingressgateway to reach tutor-service REST API.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-gateway-to-tutor-service
+  namespace: edumatch
+spec:
+  selector:
+    matchLabels:
+      app: tutor-service
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/tutors/*", "/tutors", "/actuator/health/*", "/actuator/info"]
+---
+# Allow user-service to call tutor-service gRPC (east-west).
+# When booking-service comes online later, add it here too.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-user-to-tutor-grpc
+  namespace: edumatch
+spec:
+  selector:
+    matchLabels:
+      app: tutor-service
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/edumatch/sa/user-service
+      to:
+        - operation:
+            ports: ["9090"]
+---
+# Allow user-service and tutor-service to talk to their respective PostgreSQL.
+# PostgreSQL pods receive PERMISSIVE policy since their client (the app) is the
+# only authenticated peer. We keep it simple: scope by namespace SAs.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-app-to-user-postgres
+  namespace: edumatch
+spec:
+  selector:
+    matchLabels:
+      app: user-postgres
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/edumatch/sa/user-service
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-app-to-tutor-postgres
+  namespace: edumatch
+spec:
+  selector:
+    matchLabels:
+      app: tutor-postgres
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/edumatch/sa/tutor-service

@@ -1,0 +1,58 @@
+# VirtualService: routes /api/{auth,users,tutors}/* to the right backend.
+# Rewrites the path so user-service sees /auth/* not /api/auth/*.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: edumatch-routes
+  namespace: edumatch
+spec:
+  hosts:
+    - edumatch.local
+  gateways:
+    - edumatch-gateway
+  http:
+    - name: auth-routes
+      match:
+        - uri:
+            prefix: /api/auth/
+        - uri:
+            exact: /api/auth
+      rewrite:
+        uriRegexRewrite:
+          match: ^/api(/.*)?$
+          rewrite: \1
+      route:
+        - destination:
+            host: user-service.edumatch.svc.cluster.local
+            port:
+              number: 80
+    - name: users-routes
+      match:
+        - uri:
+            prefix: /api/users/
+        - uri:
+            exact: /api/users
+      rewrite:
+        uriRegexRewrite:
+          match: ^/api(/.*)?$
+          rewrite: \1
+      route:
+        - destination:
+            host: user-service.edumatch.svc.cluster.local
+            port:
+              number: 80
+    - name: tutors-routes
+      match:
+        - uri:
+            prefix: /api/tutors/
+        - uri:
+            exact: /api/tutors
+      rewrite:
+        uriRegexRewrite:
+          match: ^/api(/.*)?$
+          rewrite: \1
+      route:
+        - destination:
+            host: tutor-service.edumatch.svc.cluster.local
+            port:
+              number: 80
