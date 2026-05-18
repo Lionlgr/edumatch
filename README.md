@@ -1,71 +1,197 @@
-# EduMatch — Cloud Native Marketplace de Tutorat
+# EduMatch — Marketplace de tutorat universitaire
 
-Projet académique Master MIAGE GR2 — démontre une architecture microservices complète sur Kubernetes avec sécurité (mTLS, RBAC) et déploiement cloud (GKE).
+Projet académique **Master MIAGE GR2** — démonstration d'une architecture Cloud Native complète sur Kubernetes avec service mesh, mTLS et RBAC.
 
-## Architecture
+[![Java](https://img.shields.io/badge/Java-21-orange)]()
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen)]()
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.35-blue)]()
+[![Istio](https://img.shields.io/badge/Istio-1.24-466bb0)]()
+[![gRPC](https://img.shields.io/badge/gRPC-bonus-success)]()
 
-```
-                    ┌─────────────────┐
-                    │ Istio Gateway   │  (HTTPS, mTLS terminaison externe)
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              │              │              │
-       ┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼──────┐
-       │   user-    │ │   tutor-   │ │  booking-   │
-       │  service   │◄┤  service   │ │  service    │
-       │ (Java/REST)│ │ (Java/gRPC)│ │ (Node/REST) │
-       └──────┬─────┘ └──────┬─────┘ └──────┬──────┘
-              │              │              │
-              ▼              ▼              ▼
-         PostgreSQL     PostgreSQL     PostgreSQL
-         (users db)     (tutors db)    (bookings db)
-```
+> 📄 **[Rapport complet → docs/RAPPORT.md](docs/RAPPORT.md)**
+> 📸 **[Captures à fournir → docs/SCREENSHOTS.md](docs/SCREENSHOTS.md)**
 
-## Services
-
-| Service | Stack | Port | Communication | Rôle |
-|---|---|---|---|---|
-| `user-service` | Java 21 / Spring Boot 3 | 8080 | REST | Auth JWT, profils étudiant/tuteur |
-| `tutor-service` | Java 21 / Spring Boot 3 | 9090 | gRPC + REST | Annonces, matching par compétences |
-| `booking-service` | Node.js 20 / Express | 3000 | REST | Créneaux, réservations |
-| `frontend` | React 18 + Vite + Tailwind | 5173 | — | UI publique |
-
-## Stack Cloud Native
-
-- **Conteneurisation** : Docker (multi-stage builds)
-- **Orchestration** : Kubernetes (Minikube en local, GKE Autopilot en cloud)
-- **Service mesh** : Istio (Gateway, VirtualService, mTLS STRICT, AuthorizationPolicy)
-- **Base de données** : PostgreSQL 16 (StatefulSet, 1 DB par service)
-- **Sécurité** : RBAC Kubernetes (ServiceAccount par service), JWT applicatif, mTLS Istio
-- **CI/CD** : GitHub Actions (build + push Docker Hub + déploiement GKE)
+---
 
 ## Paliers du barème
 
 | Palier | Note | Statut |
 |---|---|---|
-| 1 service en local | 10/20 | 🚧 en cours |
-| + Gateway locale | 12/20 | ⏳ |
-| + 2e service | 14/20 | ⏳ |
-| + Base de données | 16/20 | ⏳ |
-| + Sécurité (RBAC + mTLS) | 18/20 | ⏳ |
-| + Déploiement cloud (GKE) | 20/20 | ⏳ |
+| 1 service local + Docker + K8s | 10/20 | ✅ |
+| Gateway locale | 12/20 | ✅ |
+| 2e service + **bonus gRPC** | 14/20 | ✅ |
+| Base de données dans le cluster | 16/20 | ✅ |
+| Sécurité (Istio mTLS + RBAC) | **18/20** | ✅ |
+| Déploiement cloud (GKE) | 20/20 | 🟡 préparé (gcloud + projet GCP), cluster non lancé |
 
-## Démarrage rapide (local)
+---
+
+## Architecture
+
+```
+                          ┌─────────────────────────┐
+                          │   curl / navigateur     │
+                          │ (Host: edumatch.local)  │
+                          └────────────┬────────────┘
+                                       │ HTTP/1.1
+                                       ▼
+                          ┌─────────────────────────┐
+                          │  Istio Ingress Gateway  │
+                          └────────────┬────────────┘
+                                       │ HTTP/2 + mTLS
+              ┌────────────────────────┼────────────────────────┐
+              │                        │                        │
+              ▼                        ▼                        ▼
+    ┌──────────────────┐   ┌──────────────────┐    ┌──────────────────┐
+    │   user-service   │   │   user-service   │    │  tutor-service   │
+    │ (Spring Boot +   │   │ (Spring Boot +   │    │ (Spring Boot +   │
+    │  Envoy sidecar)  │   │  Envoy sidecar)  │    │  Envoy sidecar)  │
+    │  REST 8080       │   │  REST 8080       │    │  REST 8080       │
+    │                  │   │                  │    │  gRPC 9090       │
+    └────────┬─────────┘   └────────┬─────────┘    └────────┬─────────┘
+             │                      │                       │
+             ▼                      ▼                       ▼
+        ┌──────────────────┐                ┌──────────────────┐
+        │   user-postgres  │                │  tutor-postgres  │
+        │   (StatefulSet)  │                │   (StatefulSet)  │
+        └──────────────────┘                └──────────────────┘
+
+         Toute communication intra-cluster = mTLS STRICT (Istio)
+```
+
+[Diagramme Mermaid haute résolution → docs/architecture.mmd](docs/architecture.mmd)
+
+---
+
+## Services
+
+| Service | Stack | Port | Communication | Rôle |
+|---|---|---|---|---|
+| [user-service](services/user-service) | Java 21 / Spring Boot 3.5 | 8080 | REST | Auth JWT, profils étudiant/tuteur |
+| [tutor-service](services/tutor-service) | Java 21 / Spring Boot 3.5 | 8080 + 9090 | REST + **gRPC** | Annonces, matching par compétences (cosinus) |
+
+Images Docker Hub :
+- [lionlgr/edumatch-user-service:0.1.0](https://hub.docker.com/r/lionlgr/edumatch-user-service)
+- [lionlgr/edumatch-tutor-service:0.1.0](https://hub.docker.com/r/lionlgr/edumatch-tutor-service)
+
+---
+
+## Démarrage rapide
+
+### Pré-requis
+
+- Docker Desktop avec **au moins 8 Go RAM** alloués
+- Minikube ≥ 1.35
+- kubectl ≥ 1.30
+- Istio CLI 1.24 (`brew install istioctl` ou voir [docs/RAPPORT.md](docs/RAPPORT.md#6-reproduction-mode-opératoire))
+
+### Déploiement local
 
 ```bash
-# 1. Lancer PostgreSQL en local
-docker compose -f services/user-service/docker-compose.dev.yml up -d
+# 1. Cluster Kubernetes + service mesh
+minikube start --cpus=4 --memory=7000 --driver=docker
+istioctl install --set profile=demo -y
 
-# 2. Lancer user-service
-cd services/user-service && ./mvnw spring-boot:run
+# 2. Déployer EduMatch
+kubectl apply -k k8s/base/user-service
+kubectl apply -k k8s/base/tutor-service
+kubectl apply -k k8s/base/istio
 
-# 3. Tester
-curl http://localhost:8080/actuator/health
+# 3. Attendre que tout soit Ready (~2 min)
+kubectl -n edumatch get pods -w
+
+# 4. Exposer Istio Gateway (laisser tourner)
+sudo minikube tunnel
 ```
+
+Dans un autre terminal :
+
+```bash
+# Une fois pour toutes : résolution DNS
+echo "127.0.0.1 edumatch.local" | sudo tee -a /etc/hosts
+
+# Tester l'API
+curl http://edumatch.local/api/tutors
+
+curl -X POST http://edumatch.local/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"toi@miage.fr","password":"superSecret1","fullName":"Toi","role":"STUDENT"}'
+```
+
+### Tester le gRPC
+
+```bash
+brew install grpcurl  # une fois
+
+kubectl -n edumatch port-forward svc/tutor-service 9090:9090 &
+grpcurl -plaintext localhost:9090 list
+grpcurl -plaintext -d '{"subjects":["math","algebra"],"limit":3}' \
+  localhost:9090 fr.miage.edumatch.tutor.grpc.TutorMatcher/MatchTutors
+```
+
+### Vérifier que mTLS bloque les accès non autorisés
+
+```bash
+# Test : pod sans sidecar Envoy doit être bloqué
+kubectl run -n default no-sidecar --rm -i --restart=Never \
+  --image=curlimages/curl:latest -- \
+  sh -c "sleep 5 && curl -s -o - -w 'HTTP %{http_code}\n' --max-time 10 \
+    http://user-service.edumatch.svc.cluster.local/users"
+# → HTTP 000 (mTLS STRICT rejette la connexion)
+```
+
+---
+
+## Déploiement cloud (palier 20/20)
+
+Le projet GCP `edumatch-miage-2026` est prêt. Pour activer le déploiement :
+
+```bash
+gcloud auth login
+gcloud config set project edumatch-miage-2026
+
+gcloud container clusters create-auto edumatch \
+  --region=europe-west1 \
+  --release-channel=regular
+
+gcloud container clusters get-credentials edumatch --region=europe-west1
+istioctl install --set profile=demo -y
+kubectl apply -k k8s/base/user-service
+kubectl apply -k k8s/base/tutor-service
+kubectl apply -k k8s/base/istio
+```
+
+**Pensez à supprimer le cluster** quand la démo est terminée :
+```bash
+gcloud container clusters delete edumatch --region=europe-west1
+```
+
+---
+
+## Structure du dépôt
+
+```
+.
+├── README.md                       quick-start (ce fichier)
+├── docs/
+│   ├── RAPPORT.md                  rapport complet pour le correcteur
+│   ├── SCREENSHOTS.md              liste des captures à fournir
+│   └── architecture.mmd            diagramme Mermaid
+├── services/
+│   ├── user-service/               Spring Boot REST + JWT + PostgreSQL
+│   └── tutor-service/              Spring Boot REST + gRPC + PostgreSQL
+└── k8s/base/
+    ├── user-service/               Namespace, SA, ConfigMap, Secret,
+    │                               StatefulSet PG, Deployment, Service
+    ├── tutor-service/              idem
+    └── istio/                      Gateway, VirtualService,
+                                    PeerAuthentication STRICT,
+                                    AuthorizationPolicy, RBAC K8s
+```
+
+---
 
 ## Auteurs
 
-Binôme Master MIAGE GR2 — Université Paris.
-
-Encadrant : Benoit Charroux.
+Binôme **Master MIAGE GR2** — Université Paris.
+Encadrant : Benoit Charroux (`benoit.charroux@gmail.com`).
