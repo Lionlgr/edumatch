@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tutor-service-config
+  namespace: edumatch
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  DB_HOST: "tutor-postgres"
+  DB_PORT: "5432"
+  DB_NAME: "edumatch_tutors"

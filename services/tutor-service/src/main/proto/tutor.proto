@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package fr.miage.edumatch.tutor.grpc;
+
+option java_multiple_files = true;
+option java_package = "fr.miage.edumatch.tutor.grpc.proto";
+option java_outer_classname = "TutorProto";
+
+// Tutor matching service. Used by booking-service to find suitable tutors
+// based on subject and price constraints, ranked by similarity to a query.
+service TutorMatcher {
+  // Stream matching tutors ranked by relevance.
+  rpc MatchTutors (MatchRequest) returns (stream TutorMatch);
+
+  // Fetch a single tutor profile (used by booking-service to denormalize).
+  rpc GetTutor (GetTutorRequest) returns (TutorProfile);
+}
+
+message MatchRequest {
+  // Subject(s) the student is looking for, e.g. ["math", "algebra"].
+  repeated string subjects = 1;
+  // Maximum acceptable hourly rate in cents (0 = no limit).
+  int32 max_hourly_rate_cents = 2;
+  // Maximum number of results to return (default 10).
+  int32 limit = 3;
+}
+
+message GetTutorRequest {
+  string tutor_id = 1;
+}
+
+message TutorProfile {
+  string tutor_id = 1;
+  string user_id = 2;
+  string full_name = 3;
+  repeated string subjects = 4;
+  int32 hourly_rate_cents = 5;
+  string bio = 6;
+  int32 years_experience = 7;
+}
+
+message TutorMatch {
+  TutorProfile profile = 1;
+  // Similarity score in [0, 1]. 1 = perfect match.
+  double score = 2;
+}
