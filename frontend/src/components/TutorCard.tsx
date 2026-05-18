@@ -29,7 +29,13 @@ const avatarColors = [
   'from-blue-500 to-cyan-500',
 ]
 
-export default function TutorCard({ tutor, index }: { tutor: Tutor; index: number }) {
+interface Props {
+  tutor: Tutor
+  index: number
+  onBook: (tutor: Tutor) => void
+}
+
+export default function TutorCard({ tutor, index, onBook }: Props) {
   const gradient = avatarColors[index % avatarColors.length]
   const eurosPerHour = (tutor.hourlyRateCents / 100).toFixed(0)
 
@@ -73,7 +79,10 @@ export default function TutorCard({ tutor, index }: { tutor: Tutor; index: numbe
 
       <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
         <span className="text-xs text-slate-400 font-mono">#{tutor.id.slice(0, 8)}</span>
-        <button className="btn-ghost text-brand-700 hover:bg-brand-50 text-xs font-semibold">
+        <button
+          onClick={() => onBook(tutor)}
+          className="btn-ghost text-brand-700 hover:bg-brand-50 text-xs font-semibold"
+        >
           Réserver →
         </button>
       </div>

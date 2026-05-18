@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../auth'
 import { Tutor } from '../types'
 import TutorCard from '../components/TutorCard'
+import BookingModal from '../components/BookingModal'
 
 const POPULAR_SUBJECTS = ['math', 'java', 'english', 'physics']
 
@@ -11,6 +12,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [subject, setSubject] = useState<string>('')
   const [search, setSearch] = useState<string>('')
+  const [bookingTutor, setBookingTutor] = useState<Tutor | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -133,11 +135,17 @@ export default function Home() {
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((t, i) => <TutorCard key={t.id} tutor={t} index={i} />)}
+              {filtered.map((t, i) => (
+                <TutorCard key={t.id} tutor={t} index={i} onBook={setBookingTutor} />
+              ))}
             </div>
           </>
         )}
       </section>
+
+      {bookingTutor && (
+        <BookingModal tutor={bookingTutor} onClose={() => setBookingTutor(null)} />
+      )}
     </div>
   )
 }

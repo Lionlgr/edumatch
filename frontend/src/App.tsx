@@ -22,8 +22,6 @@ export default function App() {
         <a href="https://github.com" className="hover:text-brand-700 underline underline-offset-2">
           GitHub
         </a>
-        {' · '}
-        Encadrant : Benoit Charroux
       </footer>
     </div>
   )
