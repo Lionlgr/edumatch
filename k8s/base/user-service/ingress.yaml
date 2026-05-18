@@ -1,0 +1,28 @@
+# Minimal Ingress for Minikube (palier 12/20). Replaced by Istio Gateway later (palier 18/20).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: edumatch-ingress
+  namespace: edumatch
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: edumatch.local
+      http:
+        paths:
+          - path: /api/users
+            pathType: Prefix
+            backend:
+              service:
+                name: user-service
+                port:
+                  number: 80
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: user-service
+                port:
+                  number: 80

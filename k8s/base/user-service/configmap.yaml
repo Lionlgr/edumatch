@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: edumatch
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+  DB_HOST: "user-postgres"
+  DB_PORT: "5432"
+  DB_NAME: "edumatch_users"
+  JWT_EXPIRATION_MINUTES: "60"
