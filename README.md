@@ -191,8 +191,3 @@ gcloud container clusters delete edumatch --region=europe-west1
 ```
 
 ---
-
-## Auteurs
-
-Binôme **Master MIAGE GR2** — Université Paris.
-Encadrant : Benoit Charroux (`benoit.charroux@gmail.com`).
