@@ -2,7 +2,7 @@
 
 Master MIAGE GR2, année 2025/2026.
 Encadrant : Benoit Charroux.
-Binôme : Lionel Leguier et [nom du binôme à compléter].
+Binôme : Lionel Leguier et Joël Essame.
 Rendu du 7 juin 2026.
 
 ## Ce qu'on a fait
@@ -203,21 +203,21 @@ curl http://edumatch.local/api/tutors
 
 ## Nos Google Labs
 
-Chaque membre du binôme a suivi des labs sur Google Cloud Skills Boost, sur les thèmes du projet : Kubernetes, Compute Engine et infrastructure as code.
+Chaque membre du binôme a suivi des labs sur Google Cloud Skills Boost, sur les thèmes du projet : Kubernetes, Compute Engine et infrastructure as code. On a passé les trois mêmes labs, chacun sur son propre compte, et obtenu 100 % à l'évaluation à chaque fois.
 
-Lionel Leguier (compte "Lionel LEGUIER", inscrit en 2026) :
+| Lab | Date | Score |
+|---|---|---|
+| Infrastructure as Code with Terraform | 16 avril 2026 | 100 % |
+| Google Kubernetes Engine: Qwik Start | 16 avril 2026 | 100 % |
+| Create a Virtual Machine | 16 avril 2026 | 100 % |
 
-| Lab | Type | Date | Score |
-|---|---|---|---|
-| Infrastructure as Code with Terraform | Lab | 16 avril 2026 | 100 % |
-| Google Kubernetes Engine: Qwik Start | Lab | 16 avril 2026 | 100 % |
-| Create a Virtual Machine | Lab | 16 avril 2026 | 100 % |
+Le profil de Lionel Leguier :
 
 ![Profil et labs de Lionel Leguier](img/labs-lionel.png)
 
-[nom du binôme à compléter] :
+Le profil de Joël Essame :
 
-[capture du profil et des labs du binôme à insérer ici, fichier img/labs-binome.png]
+![Profil et labs de Joël Essame](img/labs-binome.png)
 
 ## Le code
 
