@@ -9,7 +9,6 @@ Projet académique **Master MIAGE GR2** — démonstration d'une architecture Cl
 [![gRPC](https://img.shields.io/badge/gRPC-bonus-success)]()
 
 > 📄 **[Rapport complet → docs/RAPPORT.md](docs/RAPPORT.md)**
-> 📸 **[Captures à fournir → docs/SCREENSHOTS.md](docs/SCREENSHOTS.md)**
 
 ---
 
