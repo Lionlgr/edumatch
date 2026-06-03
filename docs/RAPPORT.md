@@ -1,322 +1,230 @@
-# EduMatch — Rapport de projet Cloud Native
+# EduMatch, rapport de projet
 
-**Master MIAGE GR2 — 2025/2026**
-Encadrant : Benoit Charroux
-Binôme : Lionel Leguier + _[à compléter]_
-Date de rendu : 7 juin 2026
+Master MIAGE GR2, année 2025/2026.
+Encadrant : Benoit Charroux.
+Binôme : Lionel Leguier et [nom du binôme à compléter].
+Rendu du 7 juin 2026.
 
----
+## Ce qu'on a fait
 
-## 1. Présentation du projet
+EduMatch est une petite marketplace de tutorat entre étudiants. D'un côté des étudiants qui cherchent un prof particulier par matière, de l'autre des tuteurs qui publient une annonce avec leurs compétences, leur tarif et leurs années d'expérience. Quand un étudiant cherche "math", le service de tuteurs renvoie les profils classés du plus pertinent au moins pertinent, avec un petit calcul de similarité qu'on détaille plus bas.
 
-**EduMatch** est une marketplace de tutorat universitaire deux-faces (étudiants ↔ tuteurs).
-Les étudiants recherchent un tuteur par matière, consultent son profil, vérifient son tarif et ses années d'expérience ; les tuteurs publient leurs annonces avec une liste de compétences. Un algorithme de **matching par similarité cosinus** classe les tuteurs par pertinence vis-à-vis de la requête.
+Le sujet ne nous imposait pas de thème, seulement des technos et des patterns. On a donc pris un cas d'usage simple à comprendre pour pouvoir se concentrer sur la vraie difficulté : faire tourner plusieurs microservices ensemble sur Kubernetes, avec une passerelle, une base de données et de la sécurité réseau. Le fonctionnel est volontairement léger, c'est le support technique qui compte.
 
-Le projet est un **prétexte fonctionnel** pour démontrer une architecture Cloud Native complète exigée par le sujet :
+Concrètement on a deux microservices écrits en Java avec Spring Boot. Le premier (`user-service`) gère les comptes et l'authentification. Le second (`tutor-service`) gère les annonces de tuteurs et expose en plus une API gRPC pour le matching, ce qui nous rapporte le bonus prévu au barème. Les deux tournent dans des conteneurs Docker publiés sur Docker Hub, déployés sur un cluster Kubernetes (Minikube en local), derrière une passerelle Istio, avec chacun sa base PostgreSQL. Tout le trafic à l'intérieur du cluster est chiffré en mTLS, et l'accès aux services est filtré par des règles d'autorisation. Il y a aussi un front React pour la démo.
 
-| Exigence du sujet | Implémentation EduMatch |
-|---|---|
-| Microservices | 2 services Java Spring Boot (user-service, tutor-service) |
-| REST | Endpoints publics + endpoints sécurisés JWT |
-| **gRPC (bonus)** | `TutorMatcher.MatchTutors` (server-streaming) + `GetTutor` |
-| Docker | Images multi-stage publiées sur Docker Hub |
-| Kubernetes | Minikube (local) — déploiement GKE Autopilot préparé |
-| Gateway | Istio Gateway + VirtualService (remplace Ingress NGINX initial) |
-| Base de données | 2 PostgreSQL 16 en StatefulSet (1 DB par microservice) |
-| **Sécurité (RBAC, mTLS)** | Istio PeerAuthentication STRICT + AuthorizationPolicy + RBAC K8s |
-
----
-
-## 2. Architecture
+## L'architecture
 
 ```
-                          ┌─────────────────────────┐
-                          │   curl / navigateur     │
-                          │ (Host: edumatch.local)  │
-                          └────────────┬────────────┘
-                                       │ HTTP/1.1
-                                       ▼
-                          ┌─────────────────────────┐
-                          │  Istio Ingress Gateway  │   ← mTLS terminé ici
-                          │   (Envoy, port 80/443)  │
-                          └────────────┬────────────┘
-                                       │ HTTP/2 + mTLS
-              ┌────────────────────────┼────────────────────────┐
-              │                        │                        │
-              ▼                        ▼                        ▼
-    ┌──────────────────┐   ┌──────────────────┐    ┌──────────────────┐
-    │   user-service   │   │   user-service   │    │  tutor-service   │
-    │  (Spring Boot)   │   │  (Spring Boot)   │    │  (Spring Boot)   │
-    │  + Envoy sidecar │   │  + Envoy sidecar │    │  + Envoy sidecar │
-    └────────┬─────────┘   └────────┬─────────┘    └────────┬─────────┘
-             │                      │                       │
-             └──────────┬───────────┘                       │
-                        ▼                                   ▼
-              ┌──────────────────┐                ┌──────────────────┐
-              │   user-postgres  │                │  tutor-postgres  │
-              │   (StatefulSet)  │                │   (StatefulSet)  │
-              │  + Envoy sidecar │                │  + Envoy sidecar │
-              └──────────────────┘                └──────────────────┘
+                      navigateur / curl
+                     (Host: edumatch.local)
+                              |
+                              v
+                    Istio Ingress Gateway
+                        (Envoy, port 80)
+                              |
+              +---------------+----------------+
+              |               |                |
+              v               v                v
+       user-service     user-service     tutor-service
+       (Spring Boot)    (Spring Boot)    (Spring Boot)
+       + sidecar Envoy  + sidecar Envoy  + sidecar Envoy
+              |               |                |
+              +-------+-------+                |
+                      v                        v
+               user-postgres            tutor-postgres
+               (StatefulSet)            (StatefulSet)
 
-         Toute communication intra-cluster = mTLS STRICT (Istio)
-         Communication user-service ↔ tutor-service via gRPC port 9090
+   Tout le trafic entre pods passe en mTLS strict (Istio).
+   user-service appelle tutor-service en gRPC sur le port 9090.
 ```
 
-### Pourquoi ces choix ?
+Quelques décisions qu'on a prises, et pourquoi.
 
-- **Java/Spring Boot** sur les 2 services : alignement avec les exemples du référentiel pédagogique (`charroux/kubernetes-minikube`, `charroux/gRPCSpring`, `charroux/rentalservice`).
-- **gRPC pour `tutor-service`** : justifié par le matching où le serveur peut streamer plusieurs résultats classés (server-streaming RPC). Le bonus du barème est ainsi techniquement motivé, pas plaqué.
-- **PostgreSQL en StatefulSet** plutôt qu'externe (RDS, Cloud SQL) : démontre la maîtrise des `volumeClaimTemplates`, `headless Service`, `pg_isready` probes — autant de patterns K8s purs.
-- **Istio plutôt qu'Ingress NGINX** : Istio Gateway sert d'entrée HTTP et débloque ensuite **gratuitement** mTLS + AuthorizationPolicy. Le surcoût d'apprentissage est largement remboursé.
+On est restés sur Java et Spring Boot pour les deux services parce que les exemples fournis par M. Charroux (les dépôts `kubernetes-minikube`, `gRPCSpring`, `rentalservice`) sont en Java. Ça nous a évité de réinventer la roue sur la partie gRPC, qui est la plus pénible à câbler.
 
----
+Pour le `tutor-service`, on a mis du gRPC plutôt que tout en REST parce que le matching s'y prête bien : le serveur renvoie une liste de tuteurs classés, donc un flux de résultats, et gRPC sait faire du server-streaming nativement. Le bonus n'est pas plaqué pour cocher une case, il correspond à un vrai besoin de l'appli.
 
-## 3. Stack technique détaillé
+On a mis PostgreSQL dans le cluster, en StatefulSet, au lieu d'utiliser une base managée externe. C'est plus de travail (volumes persistants, service headless, sondes `pg_isready`) mais ça montre qu'on sait gérer une base avec état dans Kubernetes, ce qui est plus formateur.
+
+Enfin on a choisi Istio au lieu d'un simple Ingress NGINX. Au départ c'était juste pour avoir la passerelle. Mais une fois Istio installé, on récupère le mTLS et les règles d'autorisation quasiment gratuitement, donc l'investissement valait le coup.
+
+## Les briques techniques
 
 | Couche | Choix | Version |
 |---|---|---|
-| Langage backend | Java | 21 (Temurin / Zulu) |
+| Langage backend | Java | 21 |
 | Framework | Spring Boot | 3.5.0 |
-| Build | Maven Wrapper | 3.9.x |
-| Auth | JWT HS256 (jjwt) | 0.12.6 |
-| Mot de passe | BCrypt | Spring Security |
-| Base de données | PostgreSQL | 16 alpine |
+| Build | Maven Wrapper | 3.9 |
+| Authentification | JWT HS256 (jjwt) | 0.12.6 |
+| Hachage mot de passe | BCrypt | Spring Security |
+| Base de données | PostgreSQL | 16 |
 | gRPC | grpc-java + protoc | 1.66.0 |
-| gRPC server | net.devh starter | 3.1.0 |
-| Conteneurisation | Docker (multi-stage) | 29.x |
+| Serveur gRPC | starter net.devh | 3.1.0 |
+| Conteneurs | Docker (build multi-stage) | 29 |
 | Orchestration | Kubernetes / Minikube | 1.35 / 1.38 |
-| Service mesh | Istio | 1.24.2 (profil demo) |
-| Registry | Docker Hub | `lionlgr/edumatch-*:0.1.0` |
+| Service mesh | Istio (profil demo) | 1.24.2 |
+| Registre d'images | Docker Hub | `lionlgr/edumatch-*:0.1.0` |
+| Front | React + Vite + Tailwind | 18 |
 
----
+## Ce qu'on a construit, service par service
 
-## 4. Modules livrés
+### user-service
 
-### 4.1 `user-service` — authentification et profils
+Il s'occupe des comptes. Il expose `POST /auth/register`, `POST /auth/login`, `GET /users/me`, `GET /users/{id}` et `GET /users`. À l'inscription, le mot de passe est haché en BCrypt avant d'aller en base, et la connexion renvoie un jeton JWT valable une heure. Ce jeton est signé avec une clé HMAC que les deux services partagent, donc un jeton émis ici est accepté par le `tutor-service` sans qu'il ait besoin d'appeler `user-service`.
 
-- Spring Boot avec endpoints REST `/auth/register`, `/auth/login`, `/users/me`, `/users/{id}`, `/users`.
-- JWT HS256 signé par une clé partagée entre services.
-- Mot de passe haché en BCrypt avant insertion en base.
-- `Dockerfile` multi-stage (build sur JDK, runtime sur JRE alpine, utilisateur non-root, healthcheck).
-- Image publiée : [docker.io/lionlgr/edumatch-user-service:0.1.0](https://hub.docker.com/r/lionlgr/edumatch-user-service).
-- Déploiement K8s : Namespace, ServiceAccount, ConfigMap, Secret, Deployment 2 réplicas, Service ClusterIP.
+Le `Dockerfile` est en deux étapes : on compile avec le JDK, puis on copie le résultat dans une image JRE Alpine plus légère, en utilisateur non-root, avec un healthcheck. L'image est sur Docker Hub. Côté Kubernetes il y a un Namespace, un ServiceAccount dédié, une ConfigMap, un Secret, un Deployment à deux réplicas et un Service en ClusterIP.
 
-### 4.2 Gateway — Istio + VirtualService
+### La passerelle Istio
 
-- Istio Gateway + VirtualService au lieu d'un Ingress NGINX, ce qui permet de réutiliser l'ingress controller pour le mTLS sortant vers les services.
-- Routage `/api/auth/*`, `/api/users/*`, `/api/tutors/*` avec réécriture regex du préfixe `/api`.
-- Test : `curl http://edumatch.local/api/auth/register` → `201 Created` + JWT.
+On a un objet Gateway qui écoute en HTTP sur le port 80 pour l'hôte `edumatch.local`, et un VirtualService qui route selon le chemin : `/api/auth/*` et `/api/users/*` vont vers `user-service`, `/api/tutors/*` va vers `tutor-service`. Le préfixe `/api` est retiré au passage par une réécriture, donc le service reçoit bien `/auth/register` et pas `/api/auth/register`. Un `curl` sur `http://edumatch.local/api/auth/register` renvoie un 201 avec le jeton.
 
-### 4.3 `tutor-service` — REST + gRPC
+### tutor-service
 
-- Spring Boot avec :
-  - REST : `GET /tutors`, `GET /tutors/{id}`, `GET /tutors?subject=X`, `POST /tutors` (rôle TUTOR requis).
-  - **gRPC** sur port 9090 : `TutorMatcher.MatchTutors(MatchRequest) returns (stream TutorMatch)`.
-- Fichier `tutor.proto` partagé, code Java généré automatiquement par `protobuf-maven-plugin`.
-- Algorithme : similarité cosinus binaire sur les ensembles de sujets — `|A ∩ B| / sqrt(|A| · |B|)`.
-- Image : [docker.io/lionlgr/edumatch-tutor-service:0.1.0](https://hub.docker.com/r/lionlgr/edumatch-tutor-service).
+Il gère les annonces. Côté REST il a `GET /tutors`, `GET /tutors/{id}`, `GET /tutors?subject=X` et `POST /tutors` (réservé aux comptes tuteur). Côté gRPC, sur le port 9090, il expose `TutorMatcher.MatchTutors`, qui prend une requête (matières voulues, tarif max) et renvoie un flux de tuteurs classés.
 
-### 4.4 Persistance — PostgreSQL en StatefulSet
+Le contrat gRPC est défini dans `tutor.proto`, et le code Java est généré automatiquement à la compilation par le plugin protobuf. Le classement repose sur une similarité cosinus entre l'ensemble des matières demandées et celui des matières du tuteur, calculée comme `|A ∩ B| / racine(|A| × |B|)`. Un tuteur qui couvre exactement les deux matières demandées sort devant un tuteur qui n'en couvre qu'une.
 
-- 2 `StatefulSet` PostgreSQL séparés (`user-postgres`, `tutor-postgres`) avec :
-  - `volumeClaimTemplates` (PVC dynamique 1 Gi par instance)
-  - `headless Service` pour la résolution DNS stable
-  - probes `pg_isready` (readiness + liveness)
-- Identifiants stockés en `Secret`, montés en variables d'env via `envFrom`.
+### Les bases de données
 
-### 4.5 Sécurité — mTLS, AuthorizationPolicy, RBAC
+Chaque service a sa propre base PostgreSQL, dans un StatefulSet séparé (`user-postgres` et `tutor-postgres`). On utilise un `volumeClaimTemplate` pour avoir un volume persistant de 1 Go par instance, un Service headless pour un nom DNS stable, et des sondes `pg_isready` pour le readiness et le liveness. Les identifiants de connexion sont dans un Secret Kubernetes, injectés en variables d'environnement. On a vérifié que les données survivent à un arrêt complet du cluster : après avoir éteint puis rallumé Minikube quinze jours plus tard, les tuteurs créés étaient toujours là.
 
-- **Istio installé** avec le profil `demo`, namespace `edumatch` labellisé `istio-injection=enabled` → chaque pod reçoit un sidecar Envoy.
-- **`PeerAuthentication: STRICT`** au niveau du namespace → toute communication non chiffrée est rejetée.
-- **`AuthorizationPolicy default-deny`** + 5 règles d'autorisation explicites :
-  - `istio-ingressgateway` → `user-service` REST
-  - `istio-ingressgateway` → `tutor-service` REST
-  - `user-service` SA → `tutor-service` port 9090 (gRPC east-west)
-  - `user-service` SA → `user-postgres`
-  - `tutor-service` SA → `tutor-postgres`
-- **K8s RBAC** : `Role` + `RoleBinding` par ServiceAccount, restreignant l'accès aux ConfigMap/Secret du service correspondant uniquement.
+### La sécurité
 
-**Preuves de l'enforcement** (testées dans le cluster) :
+C'est la partie sur laquelle on a passé le plus de temps, et celle qui fait la différence au barème.
 
-| Test | Attendu | Obtenu |
+On a installé Istio avec le profil demo et labellisé le namespace `edumatch` pour l'injection automatique des sidecars. Du coup chaque pod tourne avec un proxy Envoy à côté de l'application, et c'est lui qui chiffre et déchiffre le trafic.
+
+Ensuite on a mis trois couches de sécurité.
+
+Le mTLS strict d'abord : un objet `PeerAuthentication` en mode STRICT au niveau du namespace. Concrètement, toute connexion qui n'est pas en TLS mutuel entre deux sidecars est refusée. Un pod sans sidecar ne peut tout simplement pas parler aux services.
+
+Les règles d'autorisation ensuite : on part d'un `AuthorizationPolicy` qui bloque tout par défaut, puis on autorise explicitement ce qui doit passer. La passerelle peut joindre les deux services en REST, le `user-service` peut appeler le gRPC du `tutor-service`, et chaque service ne peut parler qu'à sa propre base. Rien d'autre.
+
+Le RBAC Kubernetes enfin : chaque ServiceAccount a un Role et un RoleBinding qui lui donnent accès uniquement à sa propre ConfigMap et son propre Secret. Le `user-service` ne peut pas lire les secrets du `tutor-service`.
+
+On a vérifié que ça marche vraiment, pas juste que c'est déclaré :
+
+| Test | Attendu | Résultat |
 |---|---|---|
-| `GET /api/tutors` via Istio Gateway | 200 + JSON 4 tuteurs | ✅ 200 |
-| Pod sans sidecar → user-service | refus de connexion (mTLS bloque) | ✅ HTTP 000 |
-| Pod ServiceAccount `default` → user-service | rejeté par AuthorizationPolicy | ✅ 403 "RBAC: access denied" |
+| `GET /api/tutors` via la passerelle | 200 et la liste des tuteurs | 200 |
+| Pod sans sidecar vers `user-service` | connexion refusée | HTTP 000 (mTLS bloque) |
+| Pod avec un mauvais ServiceAccount vers `user-service` | refusé | 403 "RBAC: access denied" |
 
-### 4.6 Front-end React
+### Le front
 
-- Application React 18 + TypeScript + Vite + Tailwind CSS.
-- Pages : recherche de tuteurs (avec filtre par matière), inscription, connexion, profil utilisateur.
-- Authentification JWT stockée en `localStorage`, header `Authorization: Bearer ...` ajouté automatiquement.
-- Design avec font Inter, palette violette personnalisée, avatars en gradient, puces matière colorées par domaine.
-- Dev server avec proxy Vite vers les port-forwards K8s pour itération rapide.
+On a fait un front React (avec TypeScript, Vite et Tailwind) pour que la démo soit présentable, puisque la présentation fait partie des critères de notation. Il y a quatre écrans : la recherche de tuteurs avec filtre par matière, l'inscription, la connexion et la page de profil. Le jeton JWT est stocké dans le navigateur et ajouté automatiquement aux requêtes. Quand un tuteur s'inscrit, il peut publier son annonce depuis un formulaire dédié, et elle apparaît aussitôt dans le catalogue. Pour les tests d'API il y a aussi un Swagger sur `user-service:8080/swagger-ui.html`.
 
-### 4.7 Déploiement cloud (préparé, non activé)
+### Le cloud
 
-- gcloud CLI authentifié.
-- Projet GCP `edumatch-miage-2026` créé, billing activé via crédit Free Tier (300 €).
-- APIs `container.googleapis.com` et `compute.googleapis.com` activées.
-- Commande d'activation :
-  ```bash
-  gcloud container clusters create-auto edumatch \
-    --project=edumatch-miage-2026 \
-    --region=europe-west1 \
-    --release-channel=regular
-  gcloud container clusters get-credentials edumatch --region=europe-west1
-  istioctl install --set profile=demo -y
-  kubectl apply -k k8s/base/user-service
-  kubectl apply -k k8s/base/tutor-service
-  kubectl apply -k k8s/base/istio
-  ```
-- Coût estimé : ~0.15 €/h ; couvert par le crédit Free Tier.
-
-> **Le cluster n'a pas été lancé pour préserver le crédit pendant la phase de développement.** Il peut être activé en 5-7 minutes le jour de la démonstration.
-
----
-
-## 5. Critères d'évaluation — auto-positionnement
-
-D'après le sujet, par ordre décroissant d'importance :
-
-### 5.1 Intégration complète d'un maximum de technologies
-
-| Techno | Intégrée ? | Où |
-|---|---|---|
-| Web Services REST | ✅ | user-service, tutor-service |
-| Web Services **gRPC** | ✅ | tutor-service port 9090 |
-| Docker | ✅ | 2 images multi-stage non-root |
-| Kubernetes | ✅ | Minikube + manifestes prêts GKE |
-| Gateway | ✅ | Istio Gateway + VirtualService |
-| Service Mesh | ✅ | Istio 1.24 |
-| Base de données | ✅ | 2× PostgreSQL StatefulSet |
-| **mTLS** | ✅ | PeerAuthentication STRICT |
-| **RBAC** | ✅ | K8s Role + Istio AuthorizationPolicy |
-| HTTPS / Cloud | 🟡 | préparé, non activé |
-
-### 5.2 Codage
-
-Le code est volontairement **idiomatique** des bonnes pratiques Spring Boot 3 :
-- Records Java pour les DTO (`RegisterRequest`, `LoginRequest`, `TutorResponse`...)
-- `JpaRepository` Spring Data avec `@Query` pour la recherche par sujet
-- `ConfigurationProperties` typé pour `app.jwt.*`
-- Pas d'`@Autowired` field-injection — constructeurs partout
-- Gestion d'erreurs via `ResponseStatusException` (404, 409, 401)
-- `securityContext` durci dans les Deployments (read-only rootfs, non-root, drop ALL caps)
-- Probes liveness/readiness pointées vers Spring Boot Actuator
-
-### 5.3 Fonctionnalités
-
-- Inscription + connexion avec JWT (1h de validité)
-- Profils étudiants vs tuteurs (RBAC applicatif : seul un compte TUTOR peut créer un profil tuteur)
-- Recherche de tuteur par matière
-- **Matching par similarité cosinus** classant les tuteurs par pertinence (gRPC streaming)
-
-### 5.4 Présentation (front office)
-
-Application React 18 + TypeScript + Tailwind CSS livrée dans `frontend/` :
-- **Recherche de tuteurs** : grille responsive de cartes, filtre par matière (avec round-trip backend `?subject=`), recherche client libre sur nom et bio.
-- **Inscription / connexion** : formulaires avec validation, choix visuel Étudiant / Tuteur, JWT stocké en `localStorage`.
-- **Profil utilisateur** : affichage de l'UUID, du timestamp d'inscription, badge de rôle, et explication pédagogique de la chaîne de sécurité.
-- Swagger UI également disponible sur `user-service:8080/swagger-ui.html` pour les tests d'API.
-
----
-
-## 6. Reproduction (mode opératoire)
-
-Voir le [README.md](../README.md) à la racine du dépôt pour la commande complète, mais en résumé :
+On a préparé le déploiement sur Google Kubernetes Engine mais on ne l'a pas laissé tourner, pour ne pas consommer le crédit gratuit pendant qu'on développait. Le projet GCP est créé, la facturation est active, les API nécessaires sont activées et le compte gcloud est connecté. Pour lancer le cluster il suffit de :
 
 ```bash
-# 1. Démarrer Minikube avec 7 Go RAM minimum
+gcloud container clusters create-auto edumatch \
+  --project=edumatch-miage-2026 \
+  --region=europe-west1 \
+  --release-channel=regular
+gcloud container clusters get-credentials edumatch --region=europe-west1
+istioctl install --set profile=demo -y
+kubectl apply -k k8s/base/user-service
+kubectl apply -k k8s/base/tutor-service
+kubectl apply -k k8s/base/istio
+```
+
+Le cluster est prêt à monter en quelques minutes le jour de la démo.
+
+## Ce sur quoi on a galéré
+
+On a noté les vrais problèmes rencontrés, parce qu'ils ont pris du temps et qu'ils sont instructifs.
+
+Le premier register en double renvoyait un 403 au lieu du 409 attendu. En fait Spring Security 6 fait repasser la redirection interne vers `/error` dans la chaîne de filtres, qui la bloque. On a réglé ça en autorisant les dispatch de type ERROR dans la config de sécurité.
+
+Avec l'Ingress NGINX du début, les réponses étaient vides. Le service recevait `/api/tutors` au lieu de `/tutors`, qu'il ne connaît pas. Il a fallu une annotation de réécriture avec une regex pour enlever le préfixe.
+
+Au démarrage du `tutor-service`, on a eu un `ClassNotFoundException` sur une classe interne de gRPC. C'était un conflit de versions entre les différents jars grpc tirés en transitif. On a aligné tout ça en important le BOM gRPC dans le `dependencyManagement`.
+
+Le build Docker du `tutor-service` plantait sur la génération du code protobuf. Le binaire protoc téléchargé est lié à la glibc, et l'image Alpine utilise musl. On a basculé l'étape de build sur une image Debian (jammy) et c'est passé.
+
+Toujours sur la génération gRPC, le code généré importait `javax.annotation.Generated`, qui a disparu du JDK depuis la version 11. On a rajouté la vieille dépendance `javax.annotation-api` pour la fournir.
+
+Quand on a installé Istio, le cluster Minikube a saturé : les 4 Go alloués au départ ne suffisaient pas pour Istio plus quatre services plus deux bases. On a dû supprimer et recréer le cluster avec 7 Go.
+
+Enfin, le tout premier appel via Istio renvoyait parfois un HTTP 000. C'est une course au démarrage : le `curl` part avant que le sidecar Envoy soit prêt. Un petit délai avant le premier appel suffit à l'éviter.
+
+## Comment relancer le projet
+
+```bash
+# 1. Lancer Docker Desktop, puis le cluster
 minikube start --cpus=4 --memory=7000 --driver=docker
 
 # 2. Installer Istio
 istioctl install --set profile=demo -y
 
-# 3. Déployer EduMatch
+# 3. Déployer
 kubectl apply -k k8s/base/user-service
 kubectl apply -k k8s/base/tutor-service
 kubectl apply -k k8s/base/istio
 
-# 4. Exposer (Minikube)
-sudo minikube tunnel  # garder ce terminal ouvert
+# 4. Exposer la passerelle (laisser ce terminal ouvert)
+sudo minikube tunnel
 echo "127.0.0.1 edumatch.local" | sudo tee -a /etc/hosts
 
 # 5. Tester
 curl http://edumatch.local/api/tutors
-curl -X POST http://edumatch.local/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"toi@miage.fr","password":"superSecret1","fullName":"Toi","role":"STUDENT"}'
 ```
 
----
+## Nos Google Labs
 
-## 7. Difficultés rencontrées + solutions
+Chaque membre du binôme a suivi des labs sur Google Cloud Skills Boost, sur les thèmes du projet : Kubernetes, Compute Engine et infrastructure as code.
 
-| Problème | Cause | Solution |
-|---|---|---|
-| 403 sur duplicate register au lieu de 409 | Spring Security 6 fait passer le forward `/error` par la filter chain | `dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()` |
-| Ingress NGINX retournait réponse vide | Pas de réécriture du préfixe `/api` | Annotation `nginx.ingress.kubernetes.io/rewrite-target: /$1` + regex |
-| `ClassNotFoundException: io.grpc.InternalConfiguratorRegistry` au runtime | Versions grpc-core/grpc-api incohérentes via la transitivité | Import du `grpc-bom` dans `dependencyManagement` |
-| `protoc-maven-plugin` échouait dans le Dockerfile | Binaire protoc lié à glibc, image alpine = musl libc | Build stage `eclipse-temurin:21-jdk-jammy` (Debian) |
-| `cannot find symbol: class Generated` | `javax.annotation.Generated` retiré depuis JDK 11 | Ajout dépendance `javax.annotation:javax.annotation-api:1.3.2` |
-| Cluster Minikube saturé après install Istio | 4 Go alloués trop juste | `minikube delete && minikube start --memory=7000` |
-| HTTP 000 au premier appel via Istio | Race condition : curl démarre avant sidecar Envoy prêt | `sleep 8` avant curl, ou `holdApplicationUntilProxyStarts: true` |
+Lionel Leguier (compte "Lionel LEGUIER", inscrit en 2026) :
 
----
+| Lab | Type | Date | Score |
+|---|---|---|---|
+| Infrastructure as Code with Terraform | Lab | 16 avril 2026 | 100 % |
+| Google Kubernetes Engine: Qwik Start | Lab | 16 avril 2026 | 100 % |
+| Create a Virtual Machine | Lab | 16 avril 2026 | 100 % |
 
-## 8. Google Labs
+![Profil et labs de Lionel Leguier](img/labs-lionel.png)
 
-Voir [SCREENSHOTS.md](SCREENSHOTS.md) pour la liste des captures à fournir.
+[nom du binôme à compléter] :
 
-Labs ciblés (5 labs minimum recommandés) :
-- Kubernetes in Google Cloud: Challenge Lab
-- Deploy a Microservices Application with Anthos Service Mesh
-- Securing a GKE cluster with Network Policies
-- Cloud IAM: Qwik Start
-- GKE Workload Identity
+[capture du profil et des labs du binôme à insérer ici, fichier img/labs-binome.png]
 
----
+## Le code
 
-## 9. Code source
+Le dépôt est public sur GitHub : https://github.com/Lionlgr/edumatch
 
-Dépôt : _[à compléter avec l'URL GitHub/GitLab]_
+Il est organisé comme ceci :
 
-Structure :
 ```
 edumatch/
-├── services/
-│   ├── user-service/       Spring Boot REST + JWT
-│   └── tutor-service/      Spring Boot REST + gRPC
-├── k8s/base/
-│   ├── user-service/       Namespace, Deployment, Service, Secret, StatefulSet PG
-│   ├── tutor-service/      idem
-│   └── istio/              Gateway, VirtualService, PeerAuth, AuthZ, RBAC
-├── docs/
-│   ├── RAPPORT.md          (ce document)
-│   └── SCREENSHOTS.md      liste des captures à fournir
-└── README.md               quick-start
+  services/
+    user-service/     Spring Boot, REST + JWT
+    tutor-service/    Spring Boot, REST + gRPC
+  k8s/base/
+    user-service/     Namespace, Deployment, Service, Secret, StatefulSet PostgreSQL
+    tutor-service/    idem
+    istio/            Gateway, VirtualService, PeerAuthentication, AuthorizationPolicy, RBAC
+  frontend/           React + Vite + Tailwind
+  docs/
+    RAPPORT.md        ce document
+    SCREENSHOTS.md    liste des captures
 ```
 
-L'historique git est organisé en commits successifs, chacun correspondant à l'ajout d'un module : bootstrap du `user-service`, publication de l'image Docker Hub, correction du rewrite Ingress, ajout du `tutor-service` (REST + gRPC), bascule vers Istio (mTLS + AuthorizationPolicy + RBAC), documentation et capture des preuves CLI, puis ajout du front-end React.
+L'historique git suit la construction du projet, un commit par étape : d'abord le `user-service` seul, puis sa mise sur Docker Hub, la correction du routage, l'ajout du `tutor-service` avec gRPC, le passage à Istio pour le mTLS et les autorisations, la documentation, et enfin le front.
 
----
+## Bilan
 
-## 10. Conclusion
+On a livré une plateforme à deux microservices qui tourne de bout en bout, de l'interface React jusqu'aux bases PostgreSQL, en passant par la passerelle Istio et les sidecars Envoy en mTLS. La partie sécurité (mTLS strict, autorisations par service, RBAC Kubernetes) est en place et on a pu prouver qu'elle bloque ce qu'elle doit bloquer.
 
-L'objectif fixé — **livrer une plateforme microservices complète sécurisée par mTLS sur 20 jours en binôme** — est atteint. La chaîne fonctionnelle a été validée bout-en-bout depuis l'UI React jusqu'à la base PostgreSQL en passant par l'Istio Gateway et les sidecars Envoy.
+Ce qui reste optionnel et préparé mais pas activé, c'est le déploiement sur GKE : tout est en place côté Google Cloud, on a juste choisi de ne pas laisser le cluster tourner pour ne pas brûler le crédit gratuit. On peut le démarrer en quelques minutes si besoin pendant la soutenance.
 
-Le déploiement cloud (GKE Autopilot) est techniquement **à 5 minutes** : toute l'infrastructure GCP est en place, il suffit de lancer la commande `gcloud container clusters create-auto edumatch`. Le choix de ne pas activer le cluster pendant la phase de développement est purement budgétaire (préservation du crédit Free Tier).
+## Annexe : sorties de test
 
-Le projet démontre une **intégration cohérente de l'écosystème Cloud Native** : on ne se contente pas de cocher les cases, chaque technologie résout un problème métier ou de sécurité explicitement décrit dans ce document.
+Toutes les sorties brutes sont dans `docs/evidence/`. On en reprend les plus parlantes ici, prises en direct sur le cluster Minikube.
 
----
-
-## Annexe — Preuves CLI
-
-Toutes les sorties brutes sont archivées dans [`docs/evidence/`](evidence/). Extraits clés ci-dessous, captés en live sur le cluster Minikube.
-
-### A.1 État du cluster
+### État du cluster
 
 ```
 $ kubectl -n edumatch get pods,svc,pvc
@@ -333,26 +241,11 @@ service/tutor-postgres   ClusterIP   None            5432/TCP
 service/tutor-service    ClusterIP   10.111.30.229   80/TCP,9090/TCP
 service/user-postgres    ClusterIP   None            5432/TCP
 service/user-service     ClusterIP   10.98.62.219    80/TCP
-
-NAME                                          STATUS   CAPACITY   STORAGECLASS
-data-tutor-postgres-0                         Bound    1Gi        standard
-data-user-postgres-0                          Bound    1Gi        standard
 ```
 
-Le **`2/2`** confirme que chaque pod tourne avec son sidecar Envoy injecté par Istio.
+Le `2/2` veut dire que chaque pod tourne avec son application et son sidecar Envoy.
 
-### A.2 Plan de contrôle Istio
-
-```
-$ kubectl -n istio-system get pods,svc
-pod/istio-egressgateway-...   1/1   Running
-pod/istio-ingressgateway-...  1/1   Running
-pod/istiod-...                1/1   Running
-
-service/istio-ingressgateway   LoadBalancer  10.107.26.187   127.0.0.1   80:32143/TCP
-```
-
-### A.3 mTLS STRICT
+### mTLS strict
 
 ```
 $ kubectl -n edumatch describe peerauthentication default
@@ -361,7 +254,7 @@ Spec:
     Mode:  STRICT
 ```
 
-### A.4 Test REST via Istio Gateway
+### Un appel REST via la passerelle
 
 ```
 $ curl -i http://edumatch.local/api/auth/register \
@@ -373,90 +266,37 @@ content-type: application/json
 x-envoy-upstream-service-time: 539
 server: envoy
 
-{"accessToken":"eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJlZHVtYXRjaC11c2VyLXNlcnZpY2UiLCJzdWIiOiI4OTA5OWMzYi05NjA3LTRlYjAtOGVmMy04ZmVjOTA5Y2IzNmMiLCJlbWFpbCI6ImRlbW9AbWlhZ2UuZnIiLCJyb2xlIjoiU1RVREVOVCIsImlhdCI6MTc3OTEzNTU4NywiZXhwIjoxNzc5MTM5MTg3fQ._aOHwBsWpPgLPy72r9vBRAijqH6e4vtcemgrHZ-r6Yg",
- "expiresInSeconds":3600,
- "user":{"id":"89099c3b-9607-4eb0-8ef3-8fec909cb36c","email":"demo@miage.fr","fullName":"Demo Eleve","role":"STUDENT"}}
+{"accessToken":"eyJhbGciOiJIUzI1NiJ9...","expiresInSeconds":3600,
+ "user":{"id":"89099c3b-...","email":"demo@miage.fr","role":"STUDENT"}}
 ```
 
-Le header `server: envoy` confirme que la réponse passe par le sidecar Envoy d'Istio.
+L'en-tête `server: envoy` montre que la réponse est bien passée par le sidecar Istio.
 
-### A.5 Test gRPC MatchTutors
+### Le matching gRPC
 
 ```
-$ grpcurl -plaintext localhost:9099 list
-fr.miage.edumatch.tutor.grpc.TutorMatcher
-grpc.health.v1.Health
-grpc.reflection.v1alpha.ServerReflection
-
 $ grpcurl -plaintext -d '{"subjects":["math","calculus"],"limit":5}' \
     localhost:9099 fr.miage.edumatch.tutor.grpc.TutorMatcher/MatchTutors
 
-{
-  "profile": {"full_name": "Marie Dubois", "subjects": ["algebra","math","calculus"], ...},
-  "score": 0.8164965809277261       ← matching parfait math+calculus (2/2)
-}
-{
-  "profile": {"full_name": "Jean Martin", "subjects": ["physics","thermodynamics","math"], ...},
-  "score": 0.4082482904638631       ← match partiel math seulement (1/2)
-}
+{ "profile": {"full_name": "Marie Dubois", "subjects": ["algebra","math","calculus"]},
+  "score": 0.8164 }     <- couvre les deux matières
+{ "profile": {"full_name": "Jean Martin", "subjects": ["physics","thermodynamics","math"]},
+  "score": 0.4082 }     <- ne couvre que math
 ```
 
-Le **score** est la similarité cosinus `|A ∩ B| / sqrt(|A| · |B|)` calculée côté serveur.
+### Les tests de sécurité
 
-### A.6 Tests de sécurité (mTLS + RBAC)
-
-#### Test 1 — pod sans sidecar Envoy → bloqué par mTLS STRICT
 ```
+# Pod sans sidecar Envoy, depuis un autre namespace
 $ kubectl run -n default sec-test --image=curlimages/curl --rm -- \
     curl -s http://user-service.edumatch.svc.cluster.local/users
-HTTP 000
-TCP/TLS refused (mTLS STRICT enforced)
-```
+HTTP 000            (le mTLS strict coupe la connexion)
 
-#### Test 2 — pod avec sidecar mais ServiceAccount non autorisée → bloqué par AuthorizationPolicy
-```
+# Pod avec sidecar mais mauvais ServiceAccount
 $ kubectl run -n edumatch unauthorized --image=curlimages/curl --rm -- \
     curl -s http://user-service.edumatch.svc.cluster.local/users
 RBAC: access denied
-HTTP 403
+HTTP 403           (l'AuthorizationPolicy refuse)
 ```
 
-#### Test 3 — preuve que les règles d'autorisation sont bien actives
-```
-$ kubectl -n edumatch get authorizationpolicy
-NAME                             ACTION   AGE
-allow-app-to-tutor-postgres               27m
-allow-app-to-user-postgres                27m
-allow-gateway-to-tutor-service            27m
-allow-gateway-to-user-service             27m
-allow-user-to-tutor-grpc                  27m
-default-deny                              27m
-```
-
-Exemple de règle (`allow-gateway-to-user-service`) :
-```yaml
-spec:
-  selector:
-    matchLabels:
-      app: user-service
-  rules:
-    - from:
-        - source:
-            principals:
-              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
-      to:
-        - operation:
-            methods: ["GET", "POST"]
-            paths: ["/auth/*", "/users/*", "/users", "/actuator/health/*"]
-```
-
-### A.7 Captures écran complémentaires
-
-Une capture **Swagger UI** générée lors d'une session de validation (port-forward sur user-service:8080) est disponible dans l'annexe `docs/img/swagger-ui.png` une fois sauvegardée par l'utilisateur. L'interface confirme les 5 endpoints REST :
-- `POST /auth/register`
-- `POST /auth/login`
-- `GET /users`
-- `GET /users/{id}`
-- `GET /users/me`
-
-> **Captures Docker Hub** (vos 2 images publiques) et **profil Google Labs** (par membre du binôme) : à fournir manuellement comme exigé par le sujet — voir [`docs/SCREENSHOTS.md`](SCREENSHOTS.md).
+Les captures de l'application (Swagger, écrans du front, Docker Hub) sont à joindre au dossier, voir `docs/SCREENSHOTS.md`.
