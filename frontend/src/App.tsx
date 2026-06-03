@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Profile from './pages/Profile'
+import CreateTutorProfile from './pages/CreateTutorProfile'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/me" element={<Profile />} />
+          <Route path="/become-tutor" element={<CreateTutorProfile />} />
         </Routes>
       </main>
       <footer className="mx-auto max-w-6xl px-6 py-8 text-center text-xs text-slate-400">

@@ -21,6 +21,11 @@ export default function Header() {
         <nav className="flex items-center gap-2">
           {user ? (
             <>
+              {(user.role === 'TUTOR' || user.role === 'ADMIN') && (
+                <Link to="/become-tutor" className="btn-ghost text-brand-700 hover:bg-brand-50">
+                  + Publier mon annonce
+                </Link>
+              )}
               <Link to="/me" className="btn-ghost">
                 <span className="hidden sm:inline mr-1">Bonjour,</span>
                 <span className="font-semibold">{user.fullName.split(' ')[0]}</span>
