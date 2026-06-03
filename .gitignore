@@ -45,3 +45,6 @@ logs/
 # Spring Boot
 application-local.yml
 application-local.properties
+
+# Report build artifact
+docs/.rapport.build.html

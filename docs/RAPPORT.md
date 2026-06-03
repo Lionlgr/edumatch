@@ -133,6 +133,34 @@ kubectl apply -k k8s/base/istio
 
 Le cluster est prêt à monter en quelques minutes le jour de la démo.
 
+## Aperçu de l'application
+
+Voici à quoi ressemble le front, capturé sur le cluster en marche.
+
+La page d'accueil liste les tuteurs du catalogue. On peut filtrer par matière (le filtre déclenche un appel `GET /api/tutors?subject=...`) ou faire une recherche libre sur le nom et la description.
+
+![Page d'accueil avec le catalogue de tuteurs](img/app-home.png)
+
+L'inscription demande de choisir entre un compte étudiant et un compte tuteur. Seuls les tuteurs peuvent ensuite publier une annonce.
+
+![Formulaire d'inscription avec choix du rôle](img/app-register.png)
+
+La connexion renvoie un jeton JWT, stocké dans le navigateur.
+
+![Page de connexion](img/app-login.png)
+
+Une fois connecté, la page de profil affiche les informations du compte, relues en direct depuis `GET /api/users/me`. Le bloc du bas rappelle par où passe la requête (passerelle Istio, sidecar Envoy, mTLS).
+
+![Page de profil après connexion](img/app-profile.png)
+
+Un tuteur publie son annonce depuis ce formulaire : il ajoute ses matières sous forme d'étiquettes, son tarif et son expérience. L'annonce apparaît aussitôt dans le catalogue.
+
+![Formulaire de publication d'une annonce de tuteur](img/app-publish.png)
+
+Depuis une fiche tuteur, l'étudiant peut demander un créneau. La fenêtre propose des horaires et un message libre.
+
+![Fenêtre de demande de réservation](img/app-booking.png)
+
 ## Ce sur quoi on a galéré
 
 On a noté les vrais problèmes rencontrés, parce qu'ils ont pris du temps et qu'ils sont instructifs.
