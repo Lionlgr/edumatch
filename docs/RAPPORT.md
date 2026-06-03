@@ -236,8 +236,9 @@ edumatch/
     istio/            Gateway, VirtualService, PeerAuthentication, AuthorizationPolicy, RBAC
   frontend/           React + Vite + Tailwind
   docs/
-    RAPPORT.md        ce document
-    SCREENSHOTS.md    liste des captures
+    RAPPORT.md             ce document
+    EduMatch-Rapport.pdf   ce document au format PDF
+    img/                   captures de l'app et profils Google Labs
 ```
 
 L'historique git suit la construction du projet, un commit par étape : d'abord le `user-service` seul, puis sa mise sur Docker Hub, la correction du routage, l'ajout du `tutor-service` avec gRPC, le passage à Istio pour le mTLS et les autorisations, la documentation, et enfin le front.
@@ -250,7 +251,7 @@ Ce qui reste optionnel et préparé mais pas activé, c'est le déploiement sur 
 
 ## Annexe : sorties de test
 
-Toutes les sorties brutes sont dans `docs/evidence/`. On en reprend les plus parlantes ici, prises en direct sur le cluster Minikube.
+Voici les sorties les plus parlantes, prises en direct sur le cluster Minikube.
 
 ### État du cluster
 
@@ -327,4 +328,4 @@ RBAC: access denied
 HTTP 403           (l'AuthorizationPolicy refuse)
 ```
 
-Les captures de l'application (Swagger, écrans du front, Docker Hub) sont à joindre au dossier, voir `docs/SCREENSHOTS.md`.
+Les captures de l'application se trouvent dans la section « Aperçu de l'application » plus haut, et les fichiers sont dans `docs/img/`.

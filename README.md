@@ -60,8 +60,6 @@ Projet académique **Master MIAGE GR2** — démonstration d'une architecture Cl
          Toute communication intra-cluster = mTLS STRICT (Istio)
 ```
 
-[Diagramme Mermaid haute résolution → docs/architecture.mmd](docs/architecture.mmd)
-
 ---
 
 ## Services
@@ -176,8 +174,9 @@ gcloud container clusters delete edumatch --region=europe-west1
 ├── README.md                       quick-start (ce fichier)
 ├── docs/
 │   ├── RAPPORT.md                  rapport complet pour le correcteur
-│   ├── SCREENSHOTS.md              liste des captures à fournir
-│   └── architecture.mmd            diagramme Mermaid
+│   ├── EduMatch-Rapport.pdf        rapport au format PDF
+│   └── img/                        captures de l'app + profils Google Labs
+├── frontend/                       front React + Vite + Tailwind
 ├── services/
 │   ├── user-service/               Spring Boot REST + JWT + PostgreSQL
 │   └── tutor-service/              Spring Boot REST + gRPC + PostgreSQL

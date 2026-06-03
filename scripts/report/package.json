@@ -1,9 +1,0 @@
-{
-  "name": "edumatch-report-builder",
-  "private": true,
-  "description": "Génère les captures de l'app et le PDF du rapport",
-  "dependencies": {
-    "marked": "^14.0.0",
-    "puppeteer-core": "^23.0.0"
-  }
-}
